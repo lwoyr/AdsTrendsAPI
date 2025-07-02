@@ -2,6 +2,7 @@
 import os
 import signal
 import sys
+import warnings
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -12,6 +13,9 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from api_routes import router
 from logger import logger_manager
+
+# pytrendsのFutureWarningを抑制
+warnings.filterwarnings('ignore', category=FutureWarning, module='pytrends')
 
 load_dotenv()
 
