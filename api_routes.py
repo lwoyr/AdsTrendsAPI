@@ -51,10 +51,11 @@ async def process_keywords_batch(
     results = []
     
     for keyword, data in cached_data.items():
+        trends_score = data.get('googleTrendsScore')
         results.append(KeywordMetric(
             keyword=keyword,
             googleAdsAvgMonthlySearches=data.get('googleAdsAvgMonthlySearches'),
-            googleTrendsScore=data.get('googleTrendsScore')
+            googleTrendsScore=round(trends_score, 1) if trends_score is not None else None
         ))
     
     if missing_keywords:
@@ -94,10 +95,10 @@ async def process_keywords_batch(
             results.append(KeywordMetric(
                 keyword=keyword,
                 googleAdsAvgMonthlySearches=ads_volume,
-                googleTrendsScore=trends_score
+                googleTrendsScore=round(trends_score, 1) if trends_score is not None else None
             ))
             
-            cache_manager.set_keyword_data(keyword, ads_volume, trends_score)
+            cache_manager.set_keyword_data(keyword, ads_volume, round(trends_score, 1) if trends_score is not None else None)
     
     return results
 

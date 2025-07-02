@@ -51,7 +51,7 @@
 | **NFR‑02** | 障害耐性 | 無限ループ・無限リトライ禁止。最大 3 回リトライ＋指数バックオフ。 |
 | **NFR‑03** | ログ | `access.log`, `error.log`, `ads.log`, `trends.log` を日次ローテート。 |
 | **NFR‑04** | セキュリティ | ローカル IP のみバインド (`127.0.0.1`)。認証不要。 |
-| **NFR‑05** | 保守性 | 100% type‑hint, docstring, pylint score ≥ 8.0 |
+| **NFR‑05** | 保守性 | 100% 型ヒント、docstring、pylint スコア ≥ 8.0 |
 | **NFR‑06** | コスト | 電気代のみ。外部 API は無料枠内。 |
 
 ---
@@ -80,7 +80,7 @@
 /keyword-api/
 ├─ ads_client.yaml         # Google Ads 認証設定
 ├─ .env                    # 環境変数
-├─ main.py                 # FastAPI Entrypoint
+├─ main.py                 # FastAPI エントリーポイント
 ├─ ads.py                  # Ads API ラッパ
 ├─ trends.py               # Trends ラッパ
 ├─ cache.py                # キャッシュ層 (Redis/Pickle)
@@ -187,7 +187,7 @@ sudo systemctl start keyword_api
 
 ## 13. 変更履歴  
 
-| Date | Ver | Author | Description |
+| 日付 | バージョン | 作成者 | 説明 |
 |------|-----|--------|-------------|
 | 2025‑06‑30 | 1.0 | プロジェクト担当 | 初版 |
 
@@ -195,6 +195,6 @@ sudo systemctl start keyword_api
 
 ## 14. 参考  
 
-- Google Ads API Developer Guide (v18)  
+- Google Ads API 開発者ガイド (v18)  
 - pytrends GitHub 4.10.0  
 - FastAPI 0.111.0 ドキュメント  

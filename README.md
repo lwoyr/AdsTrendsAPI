@@ -1,95 +1,95 @@
-# Keyword Metrics Batch API
+# キーワードメトリクスバッチAPI
 
-A high-performance batch API for retrieving Google Ads search volume and Google Trends data for up to 200 keywords per request.
+Google Ads検索ボリュームとGoogleトレンドデータを最大200キーワードまで一括取得する高性能バッチAPI。
 
-## Features
+## 機能
 
-- ✅ Batch processing of up to 200 keywords per request
-- ✅ Google Ads API integration for monthly search volumes
-- ✅ Google Trends (pytrends) integration for trend scores
-- ✅ 24-hour caching with Redis support (falls back to Pickle)
-- ✅ Comprehensive logging with daily rotation
-- ✅ Circuit breaker pattern for external API failures
-- ✅ Async processing for optimal performance
-- ✅ Health check endpoint
-- ✅ Raspberry Pi optimized
+- ✅ 1リクエストで最大200キーワードのバッチ処理
+- ✅ Google Ads API統合による月間検索ボリューム取得
+- ✅ Google Trends (pytrends)統合によるトレンドスコア取得
+- ✅ Redisサポート付き24時間キャッシュ（Pickleへのフォールバック）
+- ✅ 日次ローテーション付き包括的なロギング
+- ✅ 外部APIの障害に対するサーキットブレーカーパターン
+- ✅ 最適なパフォーマンスのための非同期処理
+- ✅ ヘルスチェックエンドポイント
+- ✅ Raspberry Pi最適化
 
-## Requirements
+## 必要要件
 
-- Python 3.9+
-- Raspberry Pi 4 Model B or higher
-- Google Ads API credentials
-- Redis (optional, for caching)
+- Python 3.9以上
+- Raspberry Pi 4 Model B以上
+- Google Ads API認証情報
+- Redis（オプション、キャッシュ用）
 
-## Installation
+## インストール
 
-1. Clone the repository:
+1. リポジトリをクローン：
 ```bash
 git clone https://github.com/yourusername/keyword-api.git
 cd keyword-api
 ```
 
-2. Create virtual environment:
+2. 仮想環境を作成：
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-3. Install dependencies:
+3. 依存関係をインストール：
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configure environment:
+4. 環境設定：
 ```bash
 cp .env.sample .env
-# Edit .env with your credentials
+# .envファイルを編集して認証情報を設定
 ```
 
-5. Set up Google Ads credentials:
+5. Google Ads認証情報を設定：
 ```bash
-# Edit ads_client.yaml with your Google Ads API credentials
+# ads_client.yamlにGoogle Ads API認証情報を編集
 ```
 
-## Configuration
+## 設定
 
-### Environment Variables
+### 環境変数
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| GOOGLE_ADS_DEVELOPER_TOKEN | Google Ads developer token | Required |
-| GOOGLE_ADS_CLIENT_ID | OAuth2 client ID | Required |
-| GOOGLE_ADS_CLIENT_SECRET | OAuth2 client secret | Required |
-| GOOGLE_ADS_REFRESH_TOKEN | OAuth2 refresh token | Required |
-| GOOGLE_ADS_CUSTOMER_ID | Google Ads customer ID | Required |
-| REDIS_HOST | Redis server host | localhost |
-| REDIS_PORT | Redis server port | 6379 |
-| API_HOST | API bind address | 127.0.0.1 |
-| API_PORT | API port | 8000 |
-| LOG_LEVEL | Logging level | INFO |
-| CACHE_TTL | Cache TTL in seconds | 86400 |
+| 変数名 | 説明 | デフォルト値 |
+|--------|------|-------------|
+| GOOGLE_ADS_DEVELOPER_TOKEN | Google Ads開発者トークン | 必須 |
+| GOOGLE_ADS_CLIENT_ID | OAuth2クライアントID | 必須 |
+| GOOGLE_ADS_CLIENT_SECRET | OAuth2クライアントシークレット | 必須 |
+| GOOGLE_ADS_REFRESH_TOKEN | OAuth2リフレッシュトークン | 必須 |
+| GOOGLE_ADS_CUSTOMER_ID | Google Ads顧客ID | 必須 |
+| REDIS_HOST | Redisサーバーホスト | localhost |
+| REDIS_PORT | Redisサーバーポート | 6379 |
+| API_HOST | APIバインドアドレス | 127.0.0.1 |
+| API_PORT | APIポート | 8000 |
+| LOG_LEVEL | ログレベル | INFO |
+| CACHE_TTL | キャッシュTTL（秒） | 86400 |
 
-## Usage
+## 使用方法
 
-### Starting the API
+### APIの起動
 
 ```bash
 python main.py
 ```
 
-### API Endpoints
+### APIエンドポイント
 
 #### POST /batch_search_volume
-Process batch keyword search request.
+バッチキーワード検索リクエストを処理します。
 
-**Request:**
+**リクエスト：**
 ```json
 {
   "keywords": ["keyword1", "keyword2", "..."]
 }
 ```
 
-**Response:**
+**レスポンス：**
 ```json
 [
   {
@@ -106,9 +106,9 @@ Process batch keyword search request.
 ```
 
 #### GET /healthz
-Health check endpoint.
+ヘルスチェックエンドポイント。
 
-**Response:**
+**レスポンス：**
 ```json
 {
   "status": "ok",
@@ -116,90 +116,90 @@ Health check endpoint.
 }
 ```
 
-### Example Usage
+### 使用例
 
 ```bash
 curl -X POST http://localhost:8000/batch_search_volume \
   -H "Content-Type: application/json" \
-  -d '{"keywords": ["python programming", "machine learning", "data science"]}'
+  -d '{"keywords": ["pythonプログラミング", "機械学習", "データサイエンス"]}'
 ```
 
-## Deployment on Raspberry Pi
+## Raspberry Piへのデプロイ
 
-1. Copy the systemd service file:
+1. systemdサービスファイルをコピー：
 ```bash
 sudo cp keyword_api.service /etc/systemd/system/
 ```
 
-2. Reload systemd and enable the service:
+2. systemdをリロードしてサービスを有効化：
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable keyword_api
 sudo systemctl start keyword_api
 ```
 
-3. Check service status:
+3. サービスステータスを確認：
 ```bash
 sudo systemctl status keyword_api
 ```
 
-4. View logs:
+4. ログを表示：
 ```bash
 sudo journalctl -u keyword_api -f
 ```
 
-## Testing
+## テスト
 
-Run the test suite:
+テストスイートを実行：
 ```bash
 pytest tests/test_api.py -v
 ```
 
-Run with coverage:
+カバレッジ付きで実行：
 ```bash
 pytest tests/test_api.py --cov=. --cov-report=html
 ```
 
-## Performance
+## パフォーマンス
 
-- Handles 200 keywords in ≤ 30 seconds on Raspberry Pi 4
-- Concurrent processing of Google Ads and Trends APIs
-- Redis caching reduces API calls by up to 90%
-- Circuit breaker prevents cascade failures
+- Raspberry Pi 4で200キーワードを30秒以内で処理
+- Google AdsとTrends APIの並行処理
+- Redisキャッシュにより最大90%のAPI呼び出しを削減
+- サーキットブレーカーによるカスケード障害の防止
 
-## Logs
+## ログ
 
-Logs are stored in the `./logs` directory with daily rotation:
-- `access.log` - API access logs
-- `error.log` - Application errors
-- `ads.log` - Google Ads API logs
-- `trends.log` - Google Trends logs
+ログは`./logs`ディレクトリに日次ローテーション付きで保存されます：
+- `access.log` - APIアクセスログ
+- `error.log` - アプリケーションエラー
+- `ads.log` - Google Ads APIログ
+- `trends.log` - Googleトレンドログ
 
-## Troubleshooting
+## トラブルシューティング
 
-### Google Ads API Issues
-1. Verify credentials in `.env` and `ads_client.yaml`
-2. Check customer ID format (no dashes)
-3. Ensure developer token is approved
+### Google Ads APIの問題
+1. `.env`と`ads_client.yaml`の認証情報を確認
+2. 顧客IDのフォーマットを確認（ダッシュなし）
+3. 開発者トークンが承認されていることを確認
 
-### Google Trends Rate Limiting
-- The API includes automatic rate limiting (1 request/second)
-- Circuit breaker activates after 5 consecutive failures
-- Wait 5 minutes if CAPTCHA is detected
+### Googleトレンドのレート制限
+- APIには自動レート制限（1リクエスト/秒）が含まれています
+- 5回連続失敗後にサーキットブレーカーが作動
+- CAPTCHAが検出された場合は5分待機
 
-### Cache Issues
-- Redis connection failures automatically fall back to Pickle file cache
-- Delete `cache.pkl` to clear Pickle cache
-- Check Redis connectivity with `redis-cli ping`
+### キャッシュの問題
+- Redis接続失敗時は自動的にPickleファイルキャッシュにフォールバック
+- Pickleキャッシュをクリアするには`cache.pkl`を削除
+- `redis-cli ping`でRedis接続を確認
 
-## License
+## ライセンス
 
 MIT License
 
-## Contributing
+## 貢献
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. リポジトリをフォーク
+2. 機能ブランチを作成（`git checkout -b feature/amazing-feature`）
+3. 変更をコミット（`git commit -m 'Add amazing feature'`）
+4. ブランチにプッシュ（`git push origin feature/amazing-feature`）
+5. プルリクエストを作成
