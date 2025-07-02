@@ -1,0 +1,35 @@
+[Unit]
+Description=Keyword Metrics Batch API
+Documentation=https://github.com/yourusername/keyword-api
+After=network.target
+
+[Service]
+Type=exec
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/keyword-api
+Environment="PATH=/home/pi/keyword-api/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/pi/keyword-api/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitInterval=300
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/keyword-api/logs /home/pi/keyword-api
+
+# Resource limits
+MemoryLimit=1G
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keyword-api
+
+[Install]
+WantedBy=multi-user.target
