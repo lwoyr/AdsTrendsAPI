@@ -10,6 +10,7 @@ from ads import ads_manager
 from cache import cache_manager
 from logger import logger_manager
 from trends import trends_manager
+from queue_manager import queue_manager
 
 router = APIRouter()
 
@@ -17,6 +18,7 @@ router = APIRouter()
 class KeywordBatchRequest(BaseModel):
     """バッチキーワード検索用のリクエストモデル。"""
     keywords: List[str] = Field(..., min_items=1, max_items=200)
+    chunk_size: Optional[int] = Field(default=20, ge=1, le=50, description="一度に処理するキーワード数")
     
     @validator('keywords')
     def validate_keywords(cls, v):
@@ -42,8 +44,28 @@ class HealthResponse(BaseModel):
     timestamp: int
 
 
+class JobSubmitResponse(BaseModel):
+    """ジョブ送信レスポンスモデル。"""
+    job_id: str
+    keywords_count: int
+    estimated_time_seconds: int
+    message: str
+
+
+class JobStatusResponse(BaseModel):
+    """ジョブステータスレスポンスモデル。"""
+    job_id: str
+    status: str
+    pending: int
+    processing: int
+    completed: int
+    failed: int
+    results: Optional[List[KeywordMetric]] = None
+
+
 async def process_keywords_batch(
-    keywords: List[str]
+    keywords: List[str],
+    chunk_size: int = 20
 ) -> List[KeywordMetric]:
     """キーワードのバッチを処理してメトリクスを返す。"""
     cached_data, missing_keywords = cache_manager.get_batch_data(keywords)
@@ -59,38 +81,63 @@ async def process_keywords_batch(
         ))
     
     if missing_keywords:
-        ads_task = asyncio.create_task(
-            asyncio.to_thread(ads_manager.get_bulk_metrics, missing_keywords)
-        )
-        trends_task = asyncio.create_task(
-            trends_manager.get_bulk_trends(missing_keywords)
+        # キーワードをチャンクに分割して順次処理
+        chunks = [missing_keywords[i:i + chunk_size] for i in range(0, len(missing_keywords), chunk_size)]
+        logger_manager.access_logger.info(
+            f"未キャッシュのキーワード{len(missing_keywords)}件を{len(chunks)}チャンクに分割して処理"
         )
         
-        try:
-            ads_results, trends_results = await asyncio.gather(
-                ads_task, trends_task, return_exceptions=True
+        all_ads_results = {}
+        all_trends_results = {}
+        
+        for chunk_idx, chunk in enumerate(chunks):
+            logger_manager.access_logger.info(
+                f"チャンク {chunk_idx + 1}/{len(chunks)} を処理中 ({len(chunk)}キーワード)"
             )
             
-            if isinstance(ads_results, Exception):
-                logger_manager.error_logger.error(
-                    f"Ads APIエラー: {ads_results}", exc_info=False
-                )
-                ads_results = {kw: None for kw in missing_keywords}
+            # チャンク間に遅延を入れる（最初のチャンクは除く）
+            if chunk_idx > 0:
+                delay = min(5 + chunk_idx * 2, 15)  # 5秒から始めて最大15秒まで
+                logger_manager.access_logger.info(f"次のチャンク処理前に{delay}秒待機")
+                await asyncio.sleep(delay)
             
-            if isinstance(trends_results, Exception):
-                logger_manager.error_logger.error(
-                    f"Trends APIエラー: {trends_results}", exc_info=False
-                )
-                trends_results = {kw: None for kw in missing_keywords}
+            ads_task = asyncio.create_task(
+                asyncio.to_thread(ads_manager.get_bulk_metrics, chunk)
+            )
+            trends_task = asyncio.create_task(
+                trends_manager.get_bulk_trends(chunk)
+            )
             
-        except asyncio.TimeoutError:
-            logger_manager.error_logger.error("キーワードバッチ処理がタイムアウトしました")
-            ads_results = {kw: None for kw in missing_keywords}
-            trends_results = {kw: None for kw in missing_keywords}
+            try:
+                ads_results, trends_results = await asyncio.gather(
+                    ads_task, trends_task, return_exceptions=True
+                )
+                
+                if isinstance(ads_results, Exception):
+                    logger_manager.error_logger.error(
+                        f"Ads APIエラー (チャンク {chunk_idx + 1}): {ads_results}", exc_info=False
+                    )
+                    ads_results = {kw: None for kw in chunk}
+                
+                if isinstance(trends_results, Exception):
+                    logger_manager.error_logger.error(
+                        f"Trends APIエラー (チャンク {chunk_idx + 1}): {trends_results}", exc_info=False
+                    )
+                    trends_results = {kw: None for kw in chunk}
+                
+                all_ads_results.update(ads_results)
+                all_trends_results.update(trends_results)
+                
+            except asyncio.TimeoutError:
+                logger_manager.error_logger.error(f"チャンク {chunk_idx + 1} の処理がタイムアウトしました")
+                for kw in chunk:
+                    all_ads_results[kw] = None
+                    all_trends_results[kw] = None
         
+        # 結果を統合
         for keyword in missing_keywords:
-            ads_volume = ads_results.get(keyword)
-            trends_score = trends_results.get(keyword)
+            ads_volume = all_ads_results.get(keyword)
+            trends_score = all_trends_results.get(keyword)
             
             results.append(KeywordMetric(
                 keyword=keyword,
@@ -122,9 +169,12 @@ async def batch_search_volume(
     client_ip = request.client.host if request.client else "unknown"
     
     try:
+        # より長いタイムアウトを設定（チャンク処理のため）
+        timeout_seconds = max(90.0, len(batch_request.keywords) * 2)  # キーワード数に応じて調整
+        
         results = await asyncio.wait_for(
-            process_keywords_batch(batch_request.keywords),
-            timeout=90.0
+            process_keywords_batch(batch_request.keywords, batch_request.chunk_size),
+            timeout=timeout_seconds
         )
         
         status_code = 200
@@ -199,3 +249,171 @@ async def health_check(request: Request) -> HealthResponse:
         status="ok",
         timestamp=int(time.time())
     )
+
+
+@router.post("/async/batch_search_volume", response_model=JobSubmitResponse)
+async def async_batch_search_volume(
+    request: Request,
+    batch_request: KeywordBatchRequest
+) -> JobSubmitResponse:
+    """
+    非同期バッチキーワード検索リクエストを送信。
+    
+    Args:
+        request: FastAPIリクエストオブジェクト
+        batch_request: キーワードを含むバッチリクエスト
+        
+    Returns:
+        ジョブIDとステータス情報
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # キーワードをキューに追加
+    await queue_manager.add_keywords(batch_request.keywords)
+    
+    # ジョブIDを生成（現在はタイムスタンプを使用）
+    job_id = f"job_{int(time.time() * 1000)}"
+    
+    # 推定時間を計算（キーワードあたり約3秒と仮定）
+    estimated_time = len(batch_request.keywords) * 3
+    
+    logger_manager.log_access(
+        method="POST",
+        path="/async/batch_search_volume",
+        status_code=202,
+        client_ip=client_ip,
+        latency_ms=10
+    )
+    
+    # バックグラウンドで処理を開始
+    asyncio.create_task(process_queue_in_background())
+    
+    return JobSubmitResponse(
+        job_id=job_id,
+        keywords_count=len(batch_request.keywords),
+        estimated_time_seconds=estimated_time,
+        message="ジョブを受け付けました。/async/statusエンドポイントで進捗を確認できます。"
+    )
+
+
+@router.get("/async/status", response_model=JobStatusResponse)
+async def get_job_status(
+    request: Request,
+    keywords: Optional[str] = None
+) -> JobStatusResponse:
+    """
+    非同期ジョブのステータスを取得。
+    
+    Args:
+        request: FastAPIリクエストオブジェクト
+        keywords: 結果を取得したいキーワード（カンマ区切り）
+        
+    Returns:
+        ジョブステータスと結果
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # キューステータスを取得
+    status = await queue_manager.get_status()
+    
+    # 特定のキーワードの結果を取得
+    results = None
+    if keywords:
+        keyword_list = [k.strip() for k in keywords.split(",")]
+        raw_results = await queue_manager.get_results(keyword_list)
+        
+        results = []
+        for keyword, data in raw_results.items():
+            results.append(KeywordMetric(
+                keyword=keyword,
+                googleAdsAvgMonthlySearches=data.get("googleAdsAvgMonthlySearches"),
+                googleTrendsScore=round(data["googleTrendsScore"], 1) if data.get("googleTrendsScore") is not None else None
+            ))
+    
+    logger_manager.log_access(
+        method="GET",
+        path="/async/status",
+        status_code=200,
+        client_ip=client_ip,
+        latency_ms=5
+    )
+    
+    # 全体のステータスを判定
+    if status["pending"] == 0 and status["processing"] == 0:
+        overall_status = "completed"
+    elif status["processing"] > 0:
+        overall_status = "processing"
+    else:
+        overall_status = "pending"
+    
+    return JobStatusResponse(
+        job_id="current",
+        status=overall_status,
+        pending=status["pending"],
+        processing=status["processing"],
+        completed=status["completed"],
+        failed=status["failed"],
+        results=results
+    )
+
+
+async def process_queue_in_background():
+    """バックグラウンドでキューを処理。"""
+    while True:
+        # 次のバッチを取得
+        batch = await queue_manager.get_next_batch()
+        
+        if not batch:
+            # キューが空の場合は終了
+            break
+        
+        logger_manager.access_logger.info(f"バックグラウンド処理: {len(batch)}キーワード")
+        
+        # Google AdsとTrendsのAPIを並列で呼び出し
+        ads_task = asyncio.create_task(
+            asyncio.to_thread(ads_manager.get_bulk_metrics, batch)
+        )
+        trends_task = asyncio.create_task(
+            trends_manager.get_bulk_trends(batch)
+        )
+        
+        try:
+            ads_results, trends_results = await asyncio.gather(
+                ads_task, trends_task, return_exceptions=True
+            )
+            
+            if isinstance(ads_results, Exception):
+                logger_manager.error_logger.error(
+                    f"Ads APIエラー: {ads_results}", exc_info=False
+                )
+                ads_results = {kw: None for kw in batch}
+            
+            if isinstance(trends_results, Exception):
+                logger_manager.error_logger.error(
+                    f"Trends APIエラー: {trends_results}", exc_info=False
+                )
+                trends_results = {kw: None for kw in batch}
+            
+            # 結果をキューマネージャーに登録
+            for keyword in batch:
+                ads_volume = ads_results.get(keyword)
+                trends_score = trends_results.get(keyword)
+                
+                if ads_volume is not None or trends_score is not None:
+                    await queue_manager.mark_completed(
+                        keyword, ads_volume, trends_score
+                    )
+                    # キャッシュにも保存
+                    cache_manager.set_keyword_data(
+                        keyword, ads_volume, 
+                        round(trends_score, 1) if trends_score is not None else None
+                    )
+                else:
+                    await queue_manager.mark_failed(keyword)
+                    
+        except Exception as e:
+            logger_manager.error_logger.error(
+                f"バッチ処理中にエラー: {e}"
+            )
+            for keyword in batch:
+                await queue_manager.mark_failed(keyword)

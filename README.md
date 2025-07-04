@@ -105,6 +105,55 @@ python main.py
 ]
 ```
 
+#### 方法2: 非同期バッチ検索（429エラー対策・推奨）
+
+大量のキーワードを429エラーを回避しながら処理します。
+
+##### POST /async/batch_search_volume
+ジョブを送信します。
+
+**リクエスト：**
+```json
+{
+  "keywords": ["keyword1", "keyword2", "..."]  // 最大200キーワード
+}
+```
+
+**レスポンス：**
+```json
+{
+  "job_id": "job_1234567890",
+  "keywords_count": 200,
+  "estimated_time_seconds": 600,
+  "message": "ジョブを受け付けました。/async/statusエンドポイントで進捗を確認できます。"
+}
+```
+
+##### GET /async/status
+進捗と結果を確認します。
+
+**パラメーター:**
+- `keywords`: 結果を取得したいキーワード（カンマ区切り、オプション）
+
+**レスポンス：**
+```json
+{
+  "job_id": "current",
+  "status": "processing",  // "pending", "processing", "completed"
+  "pending": 150,
+  "processing": 20,
+  "completed": 30,
+  "failed": 0,
+  "results": [  // keywordsパラメーターを指定した場合のみ
+    {
+      "keyword": "keyword1",
+      "googleAdsAvgMonthlySearches": 1000,
+      "googleTrendsScore": 75.5
+    }
+  ]
+}
+```
+
 #### GET /healthz
 ヘルスチェックエンドポイント。
 
@@ -118,10 +167,25 @@ python main.py
 
 ### 使用例
 
+#### 同期リクエスト（少数のキーワード）
 ```bash
 curl -X POST http://localhost:8000/batch_search_volume \
   -H "Content-Type: application/json" \
-  -d '{"keywords": ["pythonプログラミング", "機械学習", "データサイエンス"]}'
+  -d '{"keywords": ["pythonプログラミング", "機械学習", "データサイエンス"], "chunk_size": 10}'
+```
+
+#### 非同期リクエスト（大量のキーワード）
+```bash
+# ジョブを送信
+curl -X POST http://localhost:8000/async/batch_search_volume \
+  -H "Content-Type: application/json" \
+  -d @keywords.json  # 200キーワードを含むJSONファイル
+
+# ステータスを確認
+curl http://localhost:8000/async/status
+
+# 特定のキーワードの結果を取得
+curl "http://localhost:8000/async/status?keywords=python,javascript,rust"
 ```
 
 ## Raspberry Piへのデプロイ
